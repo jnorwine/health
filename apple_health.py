@@ -1,6 +1,7 @@
+"""
+Handle import, cleaning, and manipulation of data from Apple Health.
+"""
 
-# run the script to put xml file into a bunch of csv files
-# %run -i ‘apple-health-data-parser’ ‘export.xml’
 
 import pandas as pd
 import numpy as np
@@ -9,10 +10,15 @@ from datetime import datetime
 from collections import OrderedDict
 import subprocess
 import os
-#import streamlit as st
+
+
+# run the script to put xml file into a bunch of csv files
+# %run -i ‘apple-health-data-parser’ ‘export.xml’
+
 
 # use someone else's script to parse the apple health xml to multiple csv files
 # this only needs to be done if there is new data
+# should put this in an if statement that checks if there is new data
 #subprocess.call(["python", "D:\\Git\\qs_ledger\\apple_health\\apple-health-data-parser.py", "D:\\Personal\\Programming\\Health\\export\\apple_health_export\\export.xml"])
 
 
@@ -146,140 +152,3 @@ plt.plot(wake_hrv_datetime_list, wake_hrv_value_list)
 plt.scatter(wake_hrv_datetime_list, wake_hrv_value_list)
 
 # st.pyplot()
-
-
-# read strongapp export csv into strong_df
-strong_df = pd.read_csv(
-    "D:\\Personal\\Programming\\Health\\export\\strong.csv")
-
-
-# put data from "Date" column into new column "datetime" in datetime format
-strong_df["datetime"] = [datetime.strptime(
-    string, "%Y-%m-%d %H:%M:%S") for string in strong_df["Date"]]
-strong_df["lbs*reps"] = strong_df["Weight"] * strong_df["Reps"]
-
-
-#
-#st.write(strong_df[(strong_df["Exercise Name"] == "AnCap Repeaters (Assisted)") | (strong_df["Exercise Name"] == "AnCap Repeaters")])
-
-
-#
-strong_wake_hrv_df = pd.concat([strong_df, wake_hrv_df])
-strong_wake_hrv_df.sort_values("datetime", inplace=True)
-strong_wake_hrv_df.reset_index(drop=True, inplace=True)
-
-
-# st.write(strong_wake_hrv_df)
-
-ancap_datetimes = np.unique(strong_df[(strong_df["Exercise Name"] == "AnCap Repeaters (Assisted)") | (
-    strong_df["Exercise Name"] == "AnCap Repeaters")].datetime.values)
-
-# unix timestamp from datetime64
-ancap_timestamp_min = (ancap_datetimes.min(
-) - np.datetime64('1970-01-01T00:00:00Z')) / np.timedelta64(1, 's')
-ancap_timestamp_max = (ancap_datetimes.max(
-) - np.datetime64("1970-01-01T00:00:00Z")) / np.timedelta64(1, "s")
-
-# default values
-xmin = ancap_timestamp_min
-xmax = ancap_timestamp_max
-
-#xmin = st.slider("xmin", ancap_timestamp_min-1, ancap_timestamp_max+1, ancap_timestamp_min)
-#xmax = st.slider("xmax", ancap_timestamp_min-1, ancap_timestamp_max+1, ancap_timestamp_max)
-#
-
-#st.subtitle("HRV vs ancap workouts")
-plt.figure(figsize=(10, 5))
-
-for mark in ancap_datetimes:
-    plt.axvline(x=mark, c="gold", alpha=0.8, label="ancap")
-plt.plot(wake_hrv_datetime_list, wake_hrv_value_list)
-
-plt.xlim((datetime.utcfromtimestamp(xmin), datetime.utcfromtimestamp(xmax)))
-
-# st.pyplot()
-
-################## BELOW CODE HAS NOT BEEN ORGANIZED ############
-
-st.header("Workouts from Strong")
-
-strong_df["treat_weight"] = ""
-strong_df.loc[strong_df["Exercise Name"] ==
-              "AnCap Repeaters (Assisted)", "treat_weight"] = "sub_from_bw"
-strong_df["true_weight"] = ""
-strong_df.loc[strong_df["treat_weight"] == "sub_from_bw", "true_weight"] = strong_df.loc[strong_df["treat_weight"]
-                                                                                         == "sub_from_bw", "bw"] - strong_df.loc[strong_df["treat_weight"] == "sub_from_bw", "weight"]
-
-st.write(strong_df)
-
-st.subheader("Specific Exercise")
-exercise = st.text_input("Exercise")
-st.write(strong_df[strong_df["Exercise Name"] == exercise])
-
-st.subheader("Performance over time, grouped by day")
-metric = "lbs*reps"
-metric = st.text_input("Metric")
-values = strong_df[strong_df["Exercise Name"] == exercise][metric]
-times = strong_df[strong_df["Exercise Name"] == exercise]["datetime"]
-
-spec_perf_df = pd.concat([values, times], axis=1).reset_index().drop(
-    "index", axis="columns")
-st.write(spec_perf_df)
-
-unique_times = times.unique()
-for unique_time in unique_times:
-    st.write(spec_perf_df[spec_perf_df["datetime"]
-                          == unique_time]["lbs*reps"].sum())
-
-
-# # plot a vertical line every time I work out, color coded by workout name
-#
-# plt.figure(figsize=(15,5))
-#
-# plt.xlim((737293.8399186282, 737324.695081372))
-# plt.plot(wake_hrv_datetime_list, wake_hrv_value_list)
-# plt.scatter(wake_hrv_datetime_list, wake_hrv_value_list)
-#
-# for name in strong_df["Workout Name"].unique():
-#     name_df = strong_df[strong_df["Workout Name"] == name]
-#     color = np.random.rand(3,)
-#     for datetime in name_df["datetime"]:
-#         plt.axvline(x=datetime, c=color, label=name)
-#
-#
-# handles, labels = plt.gca().get_legend_handles_labels()
-# by_label = OrderedDict(zip(labels, handles))
-# plt.legend(by_label.values(), by_label.keys())
-#
-#
-# # In[ ]:
-#
-#
-# # color code blocks of time for training blocks
-#
-# # loop until user says no
-# date_input_string = input("datetime YYYY-MM-DD") + "00:00:00"
-# block_start_datetime = datetime.strptime(date_input_string, "%Y-%m-%d %H:%M:%S")
-# block_type = input("block type")
-# block_stop_datetime_string = input("ending datetime YYYY-MM-DD")
-# block_stop_datetime = datetime.strptime(block_stop_datetime_string, "%Y-%m-%d %H:%M:%S")
-# # print(again? Y/N)
-#
-#
-# # for datetime in start list, append datetime to datetime list
-# # append "start" to event list
-# # append block type to block type list
-#
-# #for datetime in stop list, append datetime to datetimelist
-# # append "stop" to event list
-# # append block type to block type list
-#
-# # build block_df from lists above
-#
-# # concat block df and hrv_wake_df
-#
-# # plot axhspan from block start to block stop, color coded by block type
-# # add this plot to hrv/workout plot
-#
-#
-# # In[ ]:

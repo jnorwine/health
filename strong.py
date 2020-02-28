@@ -74,7 +74,7 @@ class StrongFrame():
             event_type = "workout"
         else: raise ValueError(f"could not find \"{event}\" in exercise or workout list")
 
-        if ax == None:
+        if ax is None:
             fig, ax = plt.subplots()
             ax.set_xlim((min(times)-timedelta(5), max(times)+timedelta(5)))
 
@@ -82,6 +82,15 @@ class StrongFrame():
             ax.scatter(times, group[metric], label=f"{event}:{metric}")
         elif event_type == "workout":
             for time in times: ax.axvline(time)
+
+    def plot(self, ax=None):
+        """
+        """
+
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        return self.df.plot(ax=ax)
 
 
     def add_metric(metric: str) -> None:

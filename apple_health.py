@@ -2,28 +2,29 @@
 Handle import, cleaning, and manipulation of data from Apple Health.
 """
 
-
+from __future__ import annotations
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.collections as collections
 from datetime import datetime
-from collections import OrderedDict
 import subprocess
-import os
 
 
 # use qs_ledger's script to parse the apple health xml to multiple csv files
 # this only needs to be done if there is new data
 # should put this in an if statement that checks if there is new data
 # where does the output go???
-
-parser_path = "D:\\Git\\qs_ledger\\apple_health\\apple-health-data-parser.py"
-xml_path = "D:\\Personal\\Programming\\Health\\export\\apple_health_export\\export.xml"
-
 def parse_xml(parser_path: str, xml_path: str) -> None:
+    """
+    """
+
     subprocess.call(["python", parser_path, xml_path])
 
 def read_mass_csv(path: str) -> pd.DataFrame:
+    """
+    """
+
     mass_df = pd.read_csv(path)
     mass_df = mass_df[mass_df["sourceName"] == "Health"]
     mass_df.drop(["type", "sourceName", "sourceVersion", "device", "startDate", "endDate"], axis=1, inplace=True)
@@ -34,17 +35,52 @@ def read_mass_csv(path: str) -> pd.DataFrame:
     return mass_df
 
 def read_sleep_csv(path: str) -> pd.DataFrame:
+    """
+    """
+
     sleep_df = pd.read_csv(path)
     sleep_df.drop(["type", "sourceName", "sourceVersion", "device", "creationDate", "value"], axis=1, inplace=True)
-    sleep_start_df = pd.DataFrame([pd.to_datetime(sleep_df.startDate)]).T
+    sleep_start_df = pd.DataFrame(sleep_df.startDate)
     sleep_start_df.columns=["datetime"]
     sleep_start_df["event"] = "sleep_start"
-    sleep_end_df = pd.DataFrame([pd.to_datetime(sleep_df.endDate)]).T
+    sleep_end_df = pd.DataFrame(sleep_df.endDate)
     sleep_end_df.columns=["datetime"]
     sleep_end_df["event"] = "sleep_end"
     sleep_df = pd.concat([sleep_start_df, sleep_end_df])
     sleep_df.set_index("datetime", inplace=True)
+    sleep_df.index = pd.to_datetime(sleep_df.index)
     return sleep_df
+
+
+def read_hrv_csv(path: str) -> pd.DataFrame:
+    """
+    """
+
+    hrv_df = pd.read_csv(path)
+    hrv_df.drop(["sourceName", "sourceVersion", "device", "type", "startDate", "endDate"], axis=1, inplace=True)
+    hrv_df["event"] = "hrv"
+    hrv_df.rename(columns={"creationDate":"datetime"}, inplace=True)
+    hrv_df.set_index("datetime", inplace=True)
+    hrv_df.index = pd.to_datetime(hrv_df.index)
+    return hrv_df
+
+
+def is_maxima(list_like, n=5):
+    """
+    find values in list_like that are greater than the surrounding n values on either side
+
+    return: boolean array
+    """
+    pass
+
+
+def is_minimum(list_like, n=5):
+    """
+    find values in list_like that are less than the surrounding n values on either side
+
+    return: boolean array
+    """
+    pass
 
 
 
@@ -63,7 +99,11 @@ class HealthFrame():
 
         self.event_types = self.df["event"].unique()
 
-    def add_event(self, df) -> None:
+    def __repr__(self):
+        return self.df.__repr__()
+
+
+    def add_event(self, df: pd.DataFrame) -> HealthFrame:
         """
         """
 
@@ -71,29 +111,109 @@ class HealthFrame():
             df = [df]
 
         df.append(self.df)
-        self.df = pd.concat(df)
+        self.df = pd.concat(df, sort=True)
 
         self.event_types = self.df["event"].unique()
+        self.df.sort_index(inplace=True)
 
-    def plot_event(self, events, ax=None) -> None:
+        return self
+
+    def scatter_event(self, events, ax=None, alpha=None) -> collections.PathCollection:
         """
         """
 
         if type(events) == str:
             events = [events]
 
-        if ax == None:
+        if ax is None:
             fig, ax = plt.subplots()
+
 
         for event in events:
             group = self.df.groupby("event").get_group(event)
-            ax.scatter(group.index, group.value)
+            scatter = ax.scatter(group.index, group.value, alpha=alpha)
 
-    def time_to_next(self, event: str) -> pd.DataFrame:
-        """return dataframe showing all entries of event with another column stating the time until its next occurence"""
+        return scatter
 
-        pass
-        
+    def vline_event(self, events, ax=None, alpha=None, where=None) -> collections.PathCollection:
+        """
+        """
+
+        if type(events) == str:
+            events = [events]
+
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        if where is None:
+            where = np.full(self.df.shape[0], True)
+
+        for event in events:
+            print(type(where))
+            group = self.df.groupby("event").get_group(event)[where]
+            vlines = [ax.axvline(x=_x, alpha=alpha) for _x in group.index]
+
+        return vlines
+
+    def plot(self, ax=None):
+        """
+        """
+
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        return self.df.plot(ax=ax)
+
+
+    def time_to_next(self, event: str) -> pd.Series:
+        """return series showing all entries of event with another column
+        stating the time until its next occurence"""
+
+        event_df = self.df[self.df["event"] == event]
+        time_to_next = [event_df.index.tolist()[i+1] - event_df.index.tolist()[i] for i, _  in enumerate(event_df["event"][:-1])]
+        time_to_next.append(np.nan)
+        time_to_next_series = pd.Series(time_to_next)
+
+        return time_to_next_series
+
+    def time_to_prev(self, event: str) -> np.ndarray:
+        """
+        """
+
+        event_df = self.df[self.df["event"] == event]
+        time_to_prev = [event_df.index.tolist()[i] - event_df.index.tolist()[i-1] for i, _  in enumerate(event_df["event"][1:])]
+        time_to_prev.insert(0, np.nan)
+        time_to_prev_array = np.array(time_to_prev)
+
+        return time_to_prev_array
+
+    def preceded_by(self, events) -> np.ndarray:
+        """
+        """
+
+        if type(events) == str:
+            events = [events]
+
+        list = [self.df["event"][i-1] in events for i, _ in enumerate(self.df["event"][1:])]
+        list.insert(0, False)
+        return np.array(list)
+
+    def get_event(self, events) -> np.ndarray:
+        """
+        """
+
+        if type(events) == str:
+            events = [events]
+
+        return HealthFrame(self.df[[event in events for event in self.df["event"]]])
+
+    def where(self, where) -> HealthFrame:
+        """
+        """
+
+        return HealthFrame(self.df[where])
+
+
 
 
 # # plot mass vs datetime, color coded by time of day
@@ -105,111 +225,19 @@ class HealthFrame():
 # plt.colorbar()
 #
 #
+
+
 # workout_df = pd.read_csv(
 #     "D:\\Personal\\Programming\\Health\\export\\apple_health_export\\Workout.csv")
 #
-# # read sleep csv, and find start/end datetimes for every sleep session
-# sleep_df = pd.read_csv(
-#     "D:\\Personal\\Programming\\Health\\export\\apple_health_export\\SleepAnalysis.csv")
-# sleep_start_datetime = [datetime.strptime(
-#     string, "%Y-%m-%d %H:%M:%S -0600") for string in sleep_df.startDate]
-# sleep_end_datetime = [datetime.strptime(
-#     string, "%Y-%m-%d %H:%M:%S -0600") for string in sleep_df.endDate]
 #
-#
-# # read hrv csv, put values and start datetimes into their own variables
-# hrv_df = pd.read_csv(
-#     "D:\\Personal\\Programming\\Health\\export\\apple_health_export\\HeartRateVariabilitySDNN.csv")
-# hrv_value = hrv_df.value
-# hrv_start_datetime = [datetime.strptime(
-#     string, "%Y-%m-%d %H:%M:%S -0600") for string in hrv_df.startDate]
-#
-#
-# # plot all hrv values, and draw vertical lines every time sleep session ends
-# plt.figure(figsize=(20, 5))
-#
-# plt.xlim(hrv_start_datetime[0], hrv_start_datetime[-1])
-# plt.plot(hrv_start_datetime, hrv_value)
-# plt.scatter(hrv_start_datetime, hrv_value, c=[
-#             dt.time().hour for dt in hrv_start_datetime])
-#
-# for mark in sleep_end_datetime:
-#     plt.axvline(x=mark, c="violet", alpha=0.5)
-#
-# # st.pyplot()
-#
-#
-# # make a dataframe of sleep endtimes with the time until next sleep end
-# sleep_end_df = pd.DataFrame()
-# sleep_end_df["end_datetime"] = sleep_end_datetime
-# sleep_end_df["time_to_next"] = [(sleep_end_datetime[i + 1] - sleep_end_datetime[i]).total_seconds()
-#                                 for i in range(len(sleep_end_datetime) - 1)] + [None]
-#
-#
+
+
+
 # # make a boolean column in sleep_end_df, true if some wake time has a local max time to next
 # a = sleep_end_df.time_to_next.values
 # sleep_end_df["local_max"] = np.r_[True, a[1:] >
 #                                   a[:-1] + 10000] & np.r_[a[:-1] > a[1:] + 10000, True]
 #
+##
 #
-# # plot all hrv values, and draw vertical lines every time a sleep session ends with a long time until the next
-# # the idea here is to draw vertical lines where I actually woke up in the morning for the day
-# plt.figure(figsize=(20, 5))
-#
-# plt.xlim(hrv_start_datetime[0], hrv_start_datetime[-1])
-# plt.plot(hrv_start_datetime, hrv_value)
-# plt.scatter(hrv_start_datetime, hrv_value, c=[
-#             dt.time().hour for dt in hrv_start_datetime])
-#
-# for mark in sleep_end_df[sleep_end_df["local_max"] == True].end_datetime.values:
-#     plt.axvline(x=mark, c="violet", alpha=0.8)
-#
-# # st.pyplot()
-#
-#
-# # add a new "event" column to sleep_end_df that equals "wake" for all wake up events (this whole df)
-# # preparing to combine with hrv dff
-# sleep_end_df["event"] = ["wake" for i in range(len(sleep_end_df))]
-#
-#
-# # make a new df wake_df of the morning wakeups from sleep_end_df
-# wake_df = sleep_end_df[sleep_end_df["local_max"] == True]
-# wake_df.rename(columns={"end_datetime": "datetime"}, inplace=True)
-#
-#
-# # make an abbreviated dataframe with just the essential information from hrv_df
-# hrv_brief_df = pd.DataFrame()
-# hrv_brief_df["datetime"] = hrv_start_datetime
-# hrv_brief_df["event"] = "hrv"
-# hrv_brief_df["value"] = hrv_value
-#
-#
-# # combine wake and hrv events into one dataframe wake_hrv_df
-# wake_hrv_df = pd.concat([wake_df, hrv_brief_df])
-#
-#
-# # sort and reindex wake_hrv_df
-# wake_hrv_df.sort_values("datetime", inplace=True)
-# wake_hrv_df.reset_index(drop=True, inplace=True)
-#
-#
-# # find hrv values immediately preceded by "wake event"
-# # put their values and datetimes into two separate, new lists
-# wake_hrv_value_list = []
-# wake_hrv_datetime_list = []
-#
-# for wake_index in wake_hrv_df.index[wake_hrv_df["event"] == "wake"].tolist():
-#
-#     wake_hrv_value = wake_hrv_df.iloc[wake_index + 1].value
-#     wake_hrv_datetime = wake_hrv_df.iloc[wake_index + 1].datetime
-#
-#     wake_hrv_value_list.append(wake_hrv_value)
-#     wake_hrv_datetime_list.append(wake_hrv_datetime)
-#
-#
-# # plot time series of morning wakeup hrv
-# plt.figure(figsize=(15, 5))
-# plt.plot(wake_hrv_datetime_list, wake_hrv_value_list)
-# plt.scatter(wake_hrv_datetime_list, wake_hrv_value_list)
-#
-# # st.pyplot()
